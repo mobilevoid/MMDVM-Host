@@ -164,6 +164,8 @@ public:
 	unsigned int getDMRModeHang() const;
 	DMR_OVCM     getDMROVCM() const;
 	bool         getDMRProtect() const;
+	bool         getDMRPriorityDisconnect() const;
+	std::vector<unsigned int> getDMRPriorityDisconnectIds() const;
 	bool         getDMRTrunkingEnabled() const;
 	bool         getDMRControlChannel() const;
 	bool         getDMRControlChannelAlternateSlot() const;
@@ -457,6 +459,8 @@ private:
 #if defined(USE_DMR)
 	DMR_OVCM     m_dmrOVCM;
 	bool         m_dmrProtect;
+	bool         m_dmrPriorityDisconnect;
+	std::vector<unsigned int> m_dmrPriorityDisconnectIds;
 	bool         m_dmrTrunkingEnabled;
 	bool         m_dmrControlChannel;
 	bool         m_dmrControlChannelAlternateSlot;

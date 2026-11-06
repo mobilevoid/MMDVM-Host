@@ -628,6 +628,11 @@ int CMMDVMHost::run()
 		dmrBeacons                  = m_conf.getDMRBeacons();
 		DMR_OVCM ovcm               = m_conf.getDMROVCM();
 		bool protect                = m_conf.getDMRProtect();
+		bool priorityDisconnect     = m_conf.getDMRPriorityDisconnect();
+		std::vector<unsigned int> priorityDisconnectIds = m_conf.getDMRPriorityDisconnectIds();
+
+		if (priorityDisconnect && priorityDisconnectIds.empty())
+			priorityDisconnectIds.push_back(4000U);
 
 		bool trunking               = m_conf.getDMRTrunkingEnabled();
 		bool controlChannel         = m_conf.getDMRControlChannel();
@@ -680,6 +685,17 @@ int CMMDVMHost::run()
 		if (protect)
 			LogInfo("    Protect: yes");
 
+		if (priorityDisconnect) {
+			std::string ids;
+			for (std::vector<unsigned int>::const_iterator it = priorityDisconnectIds.cbegin(); it != priorityDisconnectIds.cend(); ++it) {
+				if (!ids.empty())
+					ids += ",";
+				ids += std::to_string(*it);
+			}
+
+			LogInfo("    Priority Disconnect: yes (%s)", ids.c_str());
+		}
+
 		if (trunking) {
 			LogInfo("    Trunking: yes");
 			LogInfo("    Control Channel: %s", controlChannel ? "yes" : "no");
@@ -719,7 +735,7 @@ int CMMDVMHost::run()
 				break;
 		}
 
-		m_dmr = new CDMRControl(id, colorCode, callHang, selfOnly, embeddedLCOnly, dumpTAData, prefixes, blackList, whiteList, slot1TGWhiteList, slot2TGWhiteList, m_timeout, m_modem, m_dmrNetwork, m_duplex, m_dmrLookup, rssi, jitter, ovcm, protect);
+		m_dmr = new CDMRControl(id, colorCode, callHang, selfOnly, embeddedLCOnly, dumpTAData, prefixes, blackList, whiteList, slot1TGWhiteList, slot2TGWhiteList, m_timeout, m_modem, m_dmrNetwork, m_duplex, m_dmrLookup, rssi, jitter, ovcm, protect, priorityDisconnect, priorityDisconnectIds);
 
 		m_dmrTXTimer.setTimeout(txHang);
 

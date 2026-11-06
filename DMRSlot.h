@@ -66,7 +66,7 @@ public:
 
 	void enable(bool enabled);
 
-	static void init(unsigned int colorCode, bool embeddedLCOnly, bool dumpTAData, unsigned int callHang, CModem* modem, CDMRNetwork* network, bool duplex, CDMRLookup* lookup, CRSSIInterpolator* rssiMapper, unsigned int jitter, DMR_OVCM ovcm, bool protect);
+	static void init(unsigned int colorCode, bool embeddedLCOnly, bool dumpTAData, unsigned int callHang, CModem* modem, CDMRNetwork* network, bool duplex, CDMRLookup* lookup, CRSSIInterpolator* rssiMapper, unsigned int jitter, DMR_OVCM ovcm, bool protect, bool priorityDisconnect, const std::vector<unsigned int>& priorityDisconnectIds);
 
 	void setRCCommand(unsigned int command);
 
@@ -121,6 +121,11 @@ private:
 	unsigned int               m_bitErrsAccum;
 	unsigned int               m_bitsCount;
 	bool                       m_enabled;
+	bool                       m_netDiscard;
+	unsigned int               m_netDiscardSrcId;
+	unsigned int               m_netDiscardDstId;
+	FLCO                       m_netDiscardFLCO;
+	CTimer                     m_netDiscardTimer;
 
 	static unsigned int        m_colorCode;
 
@@ -134,6 +139,8 @@ private:
 	static unsigned int        m_hangCount;
 	static DMR_OVCM            m_ovcm;
 	static bool                m_protect;
+	static bool                m_priorityDisconnect;
+	static std::vector<unsigned int> m_priorityDisconnectIds;
 
 	static CRSSIInterpolator*  m_rssiMapper;
 
@@ -159,6 +166,9 @@ private:
 
 	void writeEndRF(bool writeEnd = false);
 	void writeEndNet(bool writeEnd = false);
+
+	void priorityDisconnect(unsigned int dstId);
+	bool discardNetwork(const CDMRData& dmrData);
 
 	bool insertSilence(const unsigned char* data, unsigned char seqNo);
 	void insertSilence(unsigned int count);

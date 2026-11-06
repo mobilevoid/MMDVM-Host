@@ -193,6 +193,8 @@ m_dmrModeHang(10U),
 #if defined(USE_DMR)
 m_dmrOVCM(DMR_OVCM::OFF),
 m_dmrProtect(false),
+m_dmrPriorityDisconnect(false),
+m_dmrPriorityDisconnectIds(),
 m_dmrTrunkingEnabled(false),
 m_dmrControlChannel(false),
 m_dmrControlChannelAlternateSlot(false),
@@ -796,6 +798,17 @@ bool CConf::read()
 				}
 			} else if (::strcmp(key, "Protect") == 0)
 				m_dmrProtect = ::atoi(value) == 1;
+			else if (::strcmp(key, "PriorityDisconnect") == 0)
+				m_dmrPriorityDisconnect = ::atoi(value) == 1;
+			else if (::strcmp(key, "PriorityDisconnectIds") == 0) {
+				char* p = ::strtok(value, ",\r\n");
+				while (p != nullptr) {
+					unsigned int id = (unsigned int)::atoi(p);
+					if (id > 0U)
+						m_dmrPriorityDisconnectIds.push_back(id);
+					p = ::strtok(nullptr, ",\r\n");
+				}
+			}
 		} else if (section == SECTION::DMR_TRUNKING) {
 			if (::strcmp(key, "Enable") == 0)
 				m_dmrTrunkingEnabled = ::atoi(value) == 1;
@@ -1603,6 +1616,16 @@ DMR_OVCM CConf::getDMROVCM() const
 bool CConf::getDMRProtect() const
 {
 	return m_dmrProtect;
+}
+
+bool CConf::getDMRPriorityDisconnect() const
+{
+	return m_dmrPriorityDisconnect;
+}
+
+std::vector<unsigned int> CConf::getDMRPriorityDisconnectIds() const
+{
+	return m_dmrPriorityDisconnectIds;
 }
 #endif
 

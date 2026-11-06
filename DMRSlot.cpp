@@ -46,6 +46,8 @@ CDMRLookup*    CDMRSlot::m_lookup = nullptr;
 unsigned int   CDMRSlot::m_hangCount = 3U * 17U;
 DMR_OVCM       CDMRSlot::m_ovcm = DMR_OVCM::OFF;
 bool           CDMRSlot::m_protect = false;
+bool           CDMRSlot::m_priorityDisconnect = false;
+std::vector<unsigned int> CDMRSlot::m_priorityDisconnectIds;
 
 CRSSIInterpolator* CDMRSlot::m_rssiMapper = nullptr;
 
@@ -133,6 +135,11 @@ m_rssiCount(0U),
 m_bitErrsAccum(0U),
 m_bitsCount(0U),
 m_enabled(true),
+m_netDiscard(false),
+m_netDiscardSrcId(0U),
+m_netDiscardDstId(0U),
+m_netDiscardFLCO(FLCO::GROUP),
+m_netDiscardTimer(1000U, 0U, 1500U),
 m_rcCommand(0U)
 {
 	m_lastFrame = new unsigned char[DMR_FRAME_LENGTH_BYTES + 2U];
@@ -273,6 +280,8 @@ bool CDMRSlot::writeModem(unsigned char *data, unsigned int len)
 				m_rfState = RPT_RF_STATE::LISTENING;
 				return false;
 			}
+
+			priorityDisconnect(dstId);
 
 			if ((m_ovcm == DMR_OVCM::TX_ON) || (m_ovcm == DMR_OVCM::ON))
 				lc->setOVCM(true);
@@ -911,6 +920,8 @@ bool CDMRSlot::writeModem(unsigned char *data, unsigned int len)
 					return false;
 				}
 
+				priorityDisconnect(dstId);
+
 				if ((m_ovcm == DMR_OVCM::TX_ON) || (m_ovcm == DMR_OVCM::ON))
 					lc->setOVCM(true);
 				else if (m_ovcm == DMR_OVCM::FORCE_OFF)
@@ -1139,6 +1150,9 @@ void CDMRSlot::writeEndNet(bool writeEnd)
 void CDMRSlot::writeNetwork(const CDMRData& dmrData)
 {
 	if (!m_enabled)
+		return;
+
+	if (discardNetwork(dmrData))
 		return;
 
 	if ((m_rfState != RPT_RF_STATE::LISTENING) && (m_netState == RPT_NET_STATE::IDLE) && !m_modem->getDMRTrunkingEnabled())
@@ -2126,6 +2140,12 @@ void CDMRSlot::clock()
 		}
 	}
 
+	m_netDiscardTimer.clock(ms);
+	if (m_netDiscardTimer.isRunning() && m_netDiscardTimer.hasExpired()) {
+		m_netDiscard = false;
+		m_netDiscardTimer.stop();
+	}
+
 	if (!m_enabled)
 		return;
 
@@ -2161,6 +2181,55 @@ void CDMRSlot::clock()
 			m_packetTimer.start();
 		}
 	}
+}
+
+void CDMRSlot::priorityDisconnect(unsigned int dstId)
+{
+	if (!m_priorityDisconnect || (m_netState == RPT_NET_STATE::IDLE))
+		return;
+
+	if (std::find(m_priorityDisconnectIds.cbegin(), m_priorityDisconnectIds.cend(), dstId) == m_priorityDisconnectIds.cend())
+		return;
+
+	if (m_netLC != nullptr) {
+		m_netDiscardSrcId = m_netLC->getSrcId();
+		m_netDiscardDstId = m_netLC->getDstId();
+		m_netDiscardFLCO  = m_netLC->getFLCO();
+		m_netDiscard      = true;
+		m_netDiscardTimer.start();
+
+		std::string src = m_lookup->find(m_netDiscardSrcId);
+		std::string dst = m_lookup->find(m_netDiscardDstId);
+
+		LogMessage("DMR Slot %u, priority disconnect to %u, ending the network transmission from %s to %s%s", m_slotNo, dstId, src.c_str(), m_netDiscardFLCO == FLCO::GROUP ? "TG " : "", dst.c_str());
+	} else {
+		LogMessage("DMR Slot %u, priority disconnect to %u, ending the network transmission", m_slotNo, dstId);
+	}
+
+	m_queue.clear();
+	if (m_duplex)
+		m_modem->writeDMRAbort(m_slotNo);
+
+	writeEndNet();
+}
+
+bool CDMRSlot::discardNetwork(const CDMRData& dmrData)
+{
+	if (!m_netDiscard)
+		return false;
+
+	if ((dmrData.getSrcId() != m_netDiscardSrcId) || (dmrData.getDstId() != m_netDiscardDstId) || (dmrData.getFLCO() != m_netDiscardFLCO))
+		return false;
+
+	// The rest of the network transmission that was ended for a priority disconnect
+	if (dmrData.getDataType() == DT_TERMINATOR_WITH_LC) {
+		m_netDiscard = false;
+		m_netDiscardTimer.stop();
+	} else {
+		m_netDiscardTimer.start();
+	}
+
+	return true;
 }
 
 void CDMRSlot::writeQueueRF(const unsigned char *data)
@@ -2234,7 +2303,7 @@ void CDMRSlot::writeQueueNet(const unsigned char *data)
 	m_queue.addData(data, len);
 }
 
-void CDMRSlot::init(unsigned int colorCode, bool embeddedLCOnly, bool dumpTAData, unsigned int callHang, CModem* modem, CDMRNetwork* network, bool duplex, CDMRLookup* lookup, CRSSIInterpolator* rssiMapper, unsigned int jitter, DMR_OVCM ovcm, bool protect)
+void CDMRSlot::init(unsigned int colorCode, bool embeddedLCOnly, bool dumpTAData, unsigned int callHang, CModem* modem, CDMRNetwork* network, bool duplex, CDMRLookup* lookup, CRSSIInterpolator* rssiMapper, unsigned int jitter, DMR_OVCM ovcm, bool protect, bool priorityDisconnect, const std::vector<unsigned int>& priorityDisconnectIds)
 {
 	assert(modem != nullptr);
 	assert(lookup != nullptr);
@@ -2250,6 +2319,9 @@ void CDMRSlot::init(unsigned int colorCode, bool embeddedLCOnly, bool dumpTAData
 	m_hangCount      = (!m_modem->getDMRTrunkingEnabled()) ? callHang * 17U : callHang;
 	m_ovcm           = ovcm;
 	m_protect        = protect;
+
+	m_priorityDisconnect    = priorityDisconnect;
+	m_priorityDisconnectIds = priorityDisconnectIds;
 
 	m_rssiMapper     = rssiMapper;
 
